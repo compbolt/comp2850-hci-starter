@@ -233,4 +233,20 @@ fun Route.taskRoutes() {
         template.evaluate(writer, model)
         call.respondText(writer.toString(), ContentType.Text.Html)
     }
+
+
+    fun find(id: Int): Task? {
+        // This assumes your repository has a 'tasks' list
+        return tasks.find { it.id == id }
+    }
+
+    fun update(task: Task) {
+        // This assumes your repository has a 'tasks' list and 'persist' method
+        val existingTask = tasks.find { it.id == task.id }
+        existingTask?.let {
+            it.title = task.title
+            // You may also need to update other fields here
+        }
+        persist() // Make sure this method exists to save changes
+    }
 }
