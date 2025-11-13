@@ -19,19 +19,19 @@ import java.io.StringWriter
  */
 
 // Week 7+ imports (inline edit, toggle completion):
-// import model.Task               // When Task becomes separate model class
+// import model.Task             // When Task becomes separate model class
 // import model.ValidationResult   // For validation errors
-// import renderTemplate            // Extension function from Main.kt
-// import isHtmxRequest             // Extension function from Main.kt
+// import renderTemplate           // Extension function from Main.kt
+// import isHtmxRequest            // Extension function from Main.kt
 
 // Week 8+ imports (pagination, search, URL encoding):
 // import io.ktor.http.encodeURLParameter  // For query parameter encoding
-// import utils.Page                       // Pagination helper class
+// import utils.Page                   // Pagination helper class
 
 // Week 9+ imports (metrics logging, instrumentation):
-// import utils.jsMode              // Detect JS mode (htmx/nojs)
-// import utils.logValidationError  // Log validation failures
-// import utils.timed               // Measure request timing
+// import utils.jsMode             // Detect JS mode (htmx/nojs)
+// import utils.logValidationError   // Log validation failures
+// import utils.timed              // Measure request timing
 
 // Note: Solution repo uses storage.TaskStore instead of data.TaskRepository
 // You may refactor to this in Week 10 for production readiness
@@ -45,14 +45,11 @@ import java.io.StringWriter
  * - Week 8: Add pagination, search
  */
 
-
-object TaskRepository {
-
+/**
+ * Helper: Check if request is from HTMX
+ */
 fun ApplicationCall.isHtmx(): Boolean =
     request.headers["HX-Request"]?.equals("true", ignoreCase = true) == true
-
-
-
 
 fun Route.taskRoutes() {
     val pebble =
@@ -63,11 +60,6 @@ fun Route.taskRoutes() {
                     prefix = "templates/"
                 },
             ).build()
-
-    /**
-     * Helper: Check if request is from HTMX
-     */
-    fun ApplicationCall.isHtmx(): Boolean = request.headers["HX-Request"]?.equals("true", ignoreCase = true) == true
 
     /**
      * GET /tasks - List all tasks
@@ -157,125 +149,88 @@ fun Route.taskRoutes() {
     // - POST /tasks/{id}/edit - Save edits with validation (dual-mode)
     // - GET /tasks/{id}/view - Cancel edit (HTMX only)
 
+    post("/tasks/{id}/edit") {
+        val id = call.parameters["id"]?.toIntOrNull() ?: return@post call.respond(HttpStatusCode.NotFound)
+        val task = TaskRepository.find(id) ?: return@post call.respond(HttpStatusCode.NotFound)
+
+        val newTitle = call.receiveParameters()["title"].orEmpty().trim()
+
+        // Validation
+        if (newTitle.isBlank()) {
+            if (call.isHtmx()) {
+                // HTMX path: return edit fragment with error
+                val template = pebble.getTemplate("tasks/_edit.peb")
+                val model = mapOf(
+                    "task" to task,
+                    "error" to "Title is required. Please enter at least one character."
+                )
+                val writer = StringWriter()
+                template.evaluate(writer, model)
+                return@post call.respondText(writer.toString(), ContentType.Text.Html, HttpStatusCode.BadRequest)
+            } else {
+                // No-JS path: redirect with error flag
+                return@post call.respondRedirect("/tasks/${id}/edit?error=blank")
+            }
+        }
+
+        // Update task
+        task.title = newTitle
+        TaskRepository.update(task)
+
+        if (call.isHtmx()) {
+            // HTMX path: return view fragment + OOB status
+            val viewTemplate = pebble.getTemplate("tasks/_item.peb")
+            val viewWriter = StringWriter()
+            viewTemplate.evaluate(viewWriter, mapOf("task" to task))
+
+            val status = """<div id="status" hx-swap-oob="true">Task "${task.title}" updated successfully.</div>"""
+
+            return@post call.respondText(viewWriter.toString() + status, ContentType.Text.Html)
+        }
+
+        // No-JS path: PRG redirect
+        call.respondRedirect("/tasks")
+    }
 
     get("/tasks/{id}/edit") {
-    val id = call.parameters["id"]?.toIntOrNull() ?: return@get call.respond(HttpStatusCode.NotFound)
-    val task = TaskRepository.find(id) ?: return@get call.respond(HttpStatusCode.NotFound)
+        val id = call.parameters["id"]?.toIntOrNull() ?: return@get call.respond(HttpStatusCode.NotFound)
+        val task = TaskRepository.find(id) ?: return@get call.respond(HttpStatusCode.NotFound)
+        val errorParam = call.request.queryParameters["error"]
 
-    if (call.isHtmx()) {
-        // HTMX path: return edit fragment
-        val template = pebble.getTemplate("templates/tasks/_edit.peb")
-        val model = mapOf("task" to task, "error" to null)
-        val writer = StringWriter()
-        template.evaluate(writer, model)
-        call.respondText(writer.toString(), ContentType.Text.Html)
-    } else {
-        // No-JS path: full-page render with editingId
-        val model = mapOf(
-            "title" to "Tasks",
-            "tasks" to TaskRepository.all(),
-            "editingId" to id,
-            "errorMessage" to null
-        )
-        val template = pebble.getTemplate("templates/tasks/index.peb")
-        val writer = StringWriter()
-        template.evaluate(writer, model)
-        call.respondText(writer.toString(), ContentType.Text.Html)
-    }
-}
+        val errorMessage = when (errorParam) {
+            "blank" -> "Title is required. Please enter at least one character."
+            else -> null
+        }
 
-
-
-
-}
-post("/tasks/{id}/edit") {
-    val id = call.parameters["id"]?.toIntOrNull() ?: return@post call.respond(HttpStatusCode.NotFound)
-    val task = TaskRepository.find(id) ?: return@post call.respond(HttpStatusCode.NotFound)
-
-    val newTitle = call.receiveParameters()["title"].orEmpty().trim()
-
-    // Validation
-    if (newTitle.isBlank()) {
         if (call.isHtmx()) {
-            // HTMX path: return edit fragment with error
-            val template = pebble.getTemplate("templates/tasks/_edit.peb")
-            val model = mapOf(
-                "task" to task,
-                "error" to "Title is required. Please enter at least one character."
-            )
+            val template = pebble.getTemplate("tasks/_edit.peb")
+            val model = mapOf("task" to task, "error" to errorMessage)
             val writer = StringWriter()
             template.evaluate(writer, model)
-            return@post call.respondText(writer.toString(), ContentType.Text.Html, HttpStatusCode.BadRequest)
+            call.respondText(writer.toString(), ContentType.Text.Html)
         } else {
-            // No-JS path: redirect with error flag
-            return@post call.respondRedirect("/tasks/${id}/edit?error=blank")
+            val model = mapOf(
+                "title" to "Tasks",
+                "tasks" to TaskRepository.all(),
+                "editingId" to id,
+                "errorMessage" to errorMessage
+            )
+            val template = pebble.getTemplate("tasks/index.peb")
+            val writer = StringWriter()
+            template.evaluate(writer, model)
+            call.respondText(writer.toString(), ContentType.Text.Html)
         }
     }
 
-    // Update task
-    task.title = newTitle
-    TaskRepository.update(task)
+    get("/tasks/{id}/view") {
+        val id = call.parameters["id"]?.toIntOrNull() ?: return@get call.respond(HttpStatusCode.NotFound)
+        val task = TaskRepository.find(id) ?: return@get call.respond(HttpStatusCode.NotFound)
 
-    if (call.isHtmx()) {
-        // HTMX path: return view fragment + OOB status
-        val viewTemplate = pebble.getTemplate("templates/tasks/_item.peb")
-        val viewWriter = StringWriter()
-        viewTemplate.evaluate(viewWriter, mapOf("task" to task))
-
-        val status = """<div id="status" hx-swap-oob="true">Task "${task.title}" updated successfully.</div>"""
-
-        return@post call.respondText(viewWriter.toString() + status, ContentType.Text.Html)
-    }
-
-    // No-JS path: PRG redirect
-    call.respondRedirect("/tasks")
-}
-get("/tasks/{id}/edit") {
-    val id = call.parameters["id"]?.toIntOrNull() ?: return@get call.respond(HttpStatusCode.NotFound)
-    val task = TaskRepository.find(id) ?: return@get call.respond(HttpStatusCode.NotFound)
-    val errorParam = call.request.queryParameters["error"]
-
-    val errorMessage = when (errorParam) {
-        "blank" -> "Title is required. Please enter at least one character."
-        else -> null
-    }
-
-    if (call.isHtmx()) {
-        val template = pebble.getTemplate("templates/tasks/_edit.peb")
-        val model = mapOf("task" to task, "error" to errorMessage)
+        // HTMX path only (cancel is just a link to /tasks in no-JS)
+        val template = pebble.getTemplate("tasks/_item.peb")
+        val model = mapOf("task" to task)
         val writer = StringWriter()
         template.evaluate(writer, model)
         call.respondText(writer.toString(), ContentType.Text.Html)
-    } else {
-        val model = mapOf(
-            "title" to "Tasks",
-            "tasks" to TaskRepository.all(),
-            "editingId" to id,
-            "errorMessage" to errorMessage
-        )
-        val template = pebble.getTemplate("templates/tasks/index.peb")
-        val writer = StringWriter()
-        template.evaluate(writer, model)
-        call.respondText(writer.toString(), ContentType.Text.Html)
-    }
-}
-get("/tasks/{id}/view") {
-    val id = call.parameters["id"]?.toIntOrNull() ?: return@get call.respond(HttpStatusCode.NotFound)
-    val task = TaskRepository.find(id) ?: return@get call.respond(HttpStatusCode.NotFound)
-
-    // HTMX path only (cancel is just a link to /tasks in no-JS)
-    val template = pebble.getTemplate("templates/tasks/_item.peb")
-    val model = mapOf("task" to task)
-    val writer = StringWriter()
-    template.evaluate(writer, model)
-    call.respondText(writer.toString(), ContentType.Text.Html)
-}
-
-
-    fun find(id: Int): Task? = tasks.find { it.id == id }
-
-    fun update(task: Task) {
-        tasks.find { it.id == task.id }?.let { it.title = task.title }
-        persist()
     }
 }
