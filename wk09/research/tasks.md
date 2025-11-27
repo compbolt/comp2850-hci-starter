@@ -18,27 +18,26 @@
 ---
 
 ## Task 2: Add New Task
-**Scenario**: You've just been assigned a new coursework deadline.
+**Scenario**: you decide to go out for dinner and make a booking for 19:30
 
 **Instructions**:
-1. Add a new task: "Submit COMP2870 Assignment 2"
+1. Add a new task: "dinner booked for 19:30"
 2. Confirm it appears in the list
 
 **Success criteria**:
 - Form submission works (HTMX + no-JS)
 - New task appears immediately (or after reload for no-JS)
-- Confirmation message shown
 
 **Inclusion focus**: Error handling (if blank title), status announcements
 
 ---
 
 ## Task 3: Edit Task Inline
-**Scenario**: You made a typo in a task title.
+**Scenario**: dinner booking was changed from 19:30 to 19:45
 
 **Instructions**:
-1. Find task "Buy milk"
-2. Edit it to "Buy oat milk"
+1. Find task "dinner booked for 19:30"
+2. Edit it to "dinner booked for 19:45"
 3. Save the change
 
 **Success criteria**:
@@ -51,16 +50,14 @@
 ---
 
 ## Task 4: Delete Completed Task
-**Scenario**: You've completed "Email supervisor" and want to remove it.
+**Scenario**: you've forgotten what time dinner was and need to find the task
 
 **Instructions**:
-1. Find task "Email supervisor"
-2. Delete it
-3. Confirm it's gone
+1. filter tasks to find task: "dinner booked for 19:45"
+2. Confirm it's there
 
 **Success criteria**:
-- Confirmation shown (HTMX) OR form submits (no-JS)
-- Task removed from list
+- task is visually presented on the screen
 - Status message announced
 
 **Inclusion focus**: Confirmation (HTMX has `hx-confirm`, no-JS has none - documented trade-off)
